@@ -1,11 +1,13 @@
+// This code creates a weather service server using the Model Context Protocol (MCP)
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
+import { z } from "zod"; // Used for input validation
 
+// Base URL for the National Weather Service API
 const NWS_API_BASE = "https://api.weather.gov";
 const USER_AGENT = "weather-app/1.0";
 
-// Create server instance
+// Initialize MCP server with basic configuration
 const server = new McpServer({
     name: "weather",
     "version": "1.0.0",
@@ -15,7 +17,7 @@ const server = new McpServer({
     }
 });
 
-// Helper function for making NWS API requests
+// Helper function to make HTTP requests to the NWS API
 async function makeNWSRequest<T>(url: string): Promise<T | null> {
     const headers = {
         "User-Agent": USER_AGENT,
@@ -34,6 +36,7 @@ async function makeNWSRequest<T>(url: string): Promise<T | null> {
     }
 }
 
+// Interface defining the structure of weather alert data
 interface AlertFeature {
     properties: {
         event?: string;
@@ -44,7 +47,7 @@ interface AlertFeature {
     };
 }
 
-// Format alert data
+// Helper function to format alert information into readable text
 function formatAlert(feature: AlertFeature): string {
     const props = feature.properties;
     return [
@@ -57,6 +60,7 @@ function formatAlert(feature: AlertFeature): string {
     ].join("\n");
 }
 
+// Interfaces for different API response types
 interface ForecastPeriod {
     name?: string;
     temperature?: number;
@@ -82,7 +86,7 @@ interface ForecastResponse {
     };
 }
 
-// Register weather tools
+// Register tool to get weather alerts for a specific state
 server.tool(
     "get-alerts",
     "Get weather alerts for a state",
@@ -90,10 +94,12 @@ server.tool(
         state: z.string().length(2).describe("Two-letter state code (e.g. CA, NY)"),
     },
     async ({ state }) => {
+        // Implementation of alerts retrieval
         const stateCode = state.toUpperCase();
         const alertsUrl = `${NWS_API_BASE}/alerts?area=${stateCode}`;
         const alertsData = await makeNWSRequest<AlertsResponse>(alertsUrl);
 
+        // Handle various response scenarios and format the output
         if (!alertsData) {
             return {
                 content: [
@@ -131,6 +137,7 @@ server.tool(
     },
 );
 
+// Register tool to get weather forecast for specific coordinates
 server.tool(
     "get-forecast",
     "Get weather forecast for a location",
@@ -139,10 +146,11 @@ server.tool(
         longitude: z.number().min(-180).max(180).describe("Longitude of the location"),
     },
     async ({ latitude, longitude }) => {
-        // Get grid point data
+        // First get the grid point data for the location
         const pointsUrl = `${NWS_API_BASE}/points/${latitude.toFixed(4)},${longitude.toFixed(4)}`;
         const pointsData = await makeNWSRequest<PointsResponse>(pointsUrl);
 
+        // Handle various error cases and response scenarios
         if (!pointsData) {
             return {
                 content: [
@@ -166,7 +174,7 @@ server.tool(
             };
         }
 
-        // Get forecast data
+        // Get and format the forecast data
         const forecastData = await makeNWSRequest<ForecastResponse>(forecastUrl);
         if (!forecastData) {
             return {
@@ -191,7 +199,7 @@ server.tool(
             };
         }
 
-        // Format forecast periods
+        // Format each forecast period
         const formattedForecast = periods.map((period: ForecastPeriod) => {
             [
                 `${period.name || "Unknown"}:`,
@@ -215,12 +223,14 @@ server.tool(
     },
 );
 
+// Main function to start the server
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error("Weather MCP Server running on stdio");
 }
 
+// Error handling for the main function
 main().catch((error) => {
     console.error("Fatal error in main():", error);
     process.exit(1);
